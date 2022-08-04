@@ -33,120 +33,53 @@ impl Lexer {
         }
     }
 
-    fn smart_split(string:&str,split:&str) -> Vec<String> {
-        //This function splits a string into a vector of strings using a split string.
-        //But it doesnt split inbetween "" and ''
-
-        let mut output = Vec::new();
-        let mut temp = String::new();
-        let mut in_string = false; // a string is inbetween ""
-        let mut in_string_2 = false; // a string 2 starts with ' and ends with '
-        let mut in_multi_line_comment = false; // a multiline comment starts with /* and ends with */
-
-
-        for c in string.chars() {
-            if in_multi_line_comment {
-                if c == '*' && string.chars().nth(1) == Some('/') {
-                    in_multi_line_comment = false;
+    fn smart_replace(str:&str,char1:&char,char2:&char) -> String {
+        let mut re = "".to_string();
+        let mut block = false;
+        for i in str.chars() {
+            if i == *char1 && block == false {
+                if char2 != &'\0' {
+                    re.push(*char2);
                 }
-            } else if in_string {
-                if c == '"' {
-                    in_string = false;
-                }
-            } else if in_string_2 {
-                if c == '\'' {
-                    in_string_2 = false;
-                }
-            } else if c == '"' {
-                in_string = true;
-            } else if c == '\'' {
-                in_string_2 = true;
-            } else if c == '/' && string.chars().nth(1) == Some('*') {
-                in_multi_line_comment = true;
-            } else if c == split.chars().nth(0).unwrap() {
-                let mut con = true;
-                for i in 0..split.len() {
-                    if string.chars().nth(i) != Some(split.chars().nth(i).unwrap()) {
-                        con = false;
-                        break;
-                    }
-                }
-                if con == true {
-                    output.push(temp);
-                    temp = String::new();
-                    continue;
-                }
+            } else if i == '"' {
+                block = !block;
+                re.push('"');
+            } else {
+                re.push(i);
             }
-            temp.push(c);
         }
-
-        if temp.len() > 0 {
-            output.push(temp);
-        }
-        output
+        re
     }
-
-    fn smart_replace(string:&str,replace:&str,with:&str) -> String {
-        //This function replaces a string with another string using a replace string.
-        //But it doesnt replace inbetween "" and ''
-
-        let mut output = String::new();
-        let mut in_string = false; // a string is inbetween ""
-        let mut in_string_2 = false; // a string 2 starts with ' and ends with '
-        let mut in_multi_line_comment = false; // a multiline comment starts with /* and ends with */
-        let mut jump = 0;
-
-        for i in 0..string.len() {
-            if jump != 0 {
-                jump -= 1;
-                continue;
-            } else if in_multi_line_comment == true {
-                if string.chars().nth(i) == Some('*') && string.chars().nth(i+1) == Some('/') {
-                    in_multi_line_comment = false;
-                    jump = 1;
-                }
-            } else if in_string == true {
-                if string.chars().nth(i) == Some('"') {
-                    in_string = false;
-                }
-            } else if in_string_2 == true {
-                if string.chars().nth(i) == Some('\'') {
-                    in_string_2 = false;
-                }
-            } else if string.chars().nth(i) == Some('"') {
-                in_string = true;
-            } else if string.chars().nth(i) == Some('\'') {
-                in_string_2 = true;
-            } else if string.chars().nth(i) == Some('/') && string.chars().nth(i+1) == Some('*') {
-                in_multi_line_comment = true;
-            } else if string.chars().nth(i) == Some(replace.chars().nth(0).unwrap()) {
-                let mut con = true;
-                for j in 0..replace.len() {
-                    if string.chars().nth(i+j) != Some(replace.chars().nth(j).unwrap()) {
-                        con = false;
-                        break;
-                    }
-                }
-                if con == true {
-                    output.push_str(with);
-                    jump = replace.len()-1;
-                } else {
-                    output.push(string.chars().nth(i).unwrap());
-                }
+    
+    fn smart_split(str:&str,char1:&char) -> Vec<String> {
+        let mut re:Vec<String> = vec!["".to_string()];
+        let mut block = false;
+        for i in str.chars() {
+            if i == *char1 && block == false {
+                re.push("".to_string());
+            } else if i == '"' {
+                block = !block;
+                let index:usize = (re.len() - 1).try_into().unwrap();
+                re[index].push('"');
+            } else {
+                let index:usize = (re.len() - 1).try_into().unwrap();
+                re[index].push(i);
             }
-            output.push(string.chars().nth(i).unwrap());
         }
-        output
+        re
     }
 
     fn lexer(&mut self) {
-        self.input = Lexer::smart_replace(&self.input,"\r","");
-        self.input = Lexer::smart_replace(&self.input,"\t","");
-        let mut input = Lexer::smart_split(&self.input,"\n");
-        
+        self.input = Lexer::smart_replace(&self.input,&'\r',&'\0');
+        self.input = Lexer::smart_replace(&self.input,&'\t',&'\0');
+        let mut input = Lexer::smart_split(&self.input,&'\n');
+        println!("{:?}",input);
     }
 
 }
 
 fn main() {
+    let mut input = String::from("print('Doing varios tests\nTest1:LOL')\nSecond Line");
+    let mut lexer = Lexer::new(input);
+    lexer.lexer();
 }
