@@ -6,6 +6,14 @@ use std::io::Read;
 //Main file of Rlang
 //A progrmming language coded in Rust
 
+//---------------------------------
+//lib
+
+fn error(message:&str) {
+    println!("{}",message);
+    process::exit(0);
+}
+
 
 //---------------------------------
 //This is a Lexer + Parser
@@ -126,17 +134,116 @@ impl Lexer {
 
 //---------------------------------
 //Then a Interpreter
+//An interpreter is a program that takes a stream of tokens and executes it.
+
+#[derive(Debug, Clone)]
+struct Variable {
+    kind: String,
+    data: String,
+    token_data: Token,
+    name: String,
+}
+
+impl Variable {
+    fn new(kind: String, data: String, token_data: Token, name: String) -> Variable {
+        Variable {
+            kind: kind,
+            data: data,
+            token_data: token_data,
+            name: name,
+        }
+    }
+
+    fn get_data(&self) -> String {
+        self.data.clone()
+    }
+
+    fn empty() -> Variable {
+        Variable {
+            kind: "".to_string(),
+            data: "".to_string(),
+            token_data: Token::empty(),
+            name: "".to_string(),
+        }
+    }
+
+    fn function_preset(name: String, token_data: Token) -> Variable {
+        Variable::new("function".to_string(), "".to_string(), token_data, name)
+    }
+
+    fn variable_preset(name: String, data: String , kind:String) -> Variable {
+        Variable::new(kind, data, Token::empty(), name)
+    }
+
+}
+
+struct Interpreter {
+    input: Vec<Token>,
+    variables: Vec<Variable>,
+    line: usize,
+}
+
+impl Interpreter {
+    fn new(input: Vec<Token>) -> Interpreter {
+        Interpreter {
+            input: input,
+            variables: Vec::new(),
+            line: 0,
+        }
+    }
+
+    fn get_variable(&self,string:String) -> Variable {
+        //will turn any string it gets into a variable of the right type
+        //or find it in self.variables
+        if string.starts_with("\"") && string.ends_with("\"") {
+            return Variable::variable_preset("internal_var".to_owned(), string[1..string.len()-1].to_string() , "string".to_owned());
+        } else {
+            for i in &self.variables {
+                if i.name == string {
+                    return i.clone();
+                }
+            }
+            error(&("[".to_owned().to_owned() + &self.line.to_string() +"]: UnknownTypeError"));
+        }
+        Variable::empty()
+    } 
+
+    fn execute(&mut self) {
+        let mut TokenStream:Vec<Token> = self.input.clone();
+        let mut index:usize = 0;
+        while index < TokenStream.len() {
+            let mut i = TokenStream[index].clone();
+            self.line = i.line;
+            if i.kind == "keyword_write" {
+                let mut data = "".to_string();
+                for j in &i.data {
+                    let temp = &self.get_variable(j.clone());
+                    if temp.kind == "string".to_string() {
+                        data.push_str(&temp.get_data());
+                    } else {
+                        error(&("[".to_owned()+ &i.line.to_string() + &"]: TypeError: expected string, got ".to_string() + &temp.kind));
+                    }
+                }
+                println!("{}",data);
+            }
+            index += 1;
+        }
+    }
+}
+
+
+//---------------------------------
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() == 1 {
-        println!("FileError: No file specified");
-        process::exit(0);
+        error("FileError: No file specified")
     }
     let mut file = File::open(&args[1]).unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let mut lexer = Lexer::new(contents);
     lexer.lexer();
-    println!("{:#?}",lexer.output);
+    let mut interpreter = Interpreter::new(lexer.output);
+    interpreter.execute();
 }
