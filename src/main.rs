@@ -2,6 +2,7 @@ use std::env;
 use std::fs::File;
 use std::process;
 use std::io::Read;
+use std::collections::HashMap;
 
 //Main file of Rlang
 //A progrmming language coded in Rust
@@ -26,7 +27,7 @@ struct Token {
     kind: String,
     data:Vec<String>,
     line:usize,
-    under:Vec<Token>
+    under:Vec<Token>,
 }
 
 impl Token {
@@ -35,7 +36,7 @@ impl Token {
             kind: "".to_string(),
             data: vec![],
             line: 0,
-            under: vec![]
+            under: vec![],
         }
     }
 
@@ -67,16 +68,21 @@ impl Lexer {
     }
 
     fn smart_replace(str:&str,char1:&char,char2:&char) -> String {
-        let mut result:String = str.to_string();
+        let mut result:Vec<char> = str.chars().collect();
         let mut index:usize = 0;
+        let mut block = false;
         while index < result.len() {
-            if result.chars().nth(index).unwrap() == *char1 {
+            if result[index] == *char1 && block == false {
                 result.remove(index);
-                result.insert(index,*char2);
+                if char2 != &'\0' {
+                    result.insert(index,*char2);
+                }
+            } else if result[index] == '"' {
+                block = !block;
             }
             index += 1;
         }
-        return result;
+        return result.iter().collect();
     }
     
     fn smart_split(str:&str,char1:&char) -> Vec<String> {
@@ -119,7 +125,15 @@ impl Lexer {
                 for j in &args {
                     current_token.data.push(j.to_string());
                 }
-            }
+            }  else if i .starts_with("let") {
+                current_token.kind = "keyword_let".to_string();
+                let ivec = Lexer::smart_split(i,&' ');
+                let args = ivec[1..].to_vec().join("");
+                let args = Lexer::smart_replace(&args, &' ', &'\0');
+                let args = Lexer::smart_split(&args,&'=');
+                current_token.data.push(args[0].to_string());
+                current_token.data.push(args[1].to_string());
+            } 
 
             if level == 0 {
                 self.output.push(current_token);
@@ -179,17 +193,21 @@ impl Variable {
 
 struct Interpreter {
     input: Vec<Token>,
-    variables: Vec<Variable>,
+    variables: HashMap<String, Vec<Variable>>,
     line: usize,
+    namespace: Vec<String>,
 }
 
 impl Interpreter {
     fn new(input: Vec<Token>) -> Interpreter {
-        Interpreter {
+        let mut i = Interpreter {
             input: input,
-            variables: Vec::new(),
+            variables: HashMap::new(),
             line: 0,
-        }
+            namespace: vec!["Global".to_string()],
+        };
+        i.variables.insert("Global".to_string(), vec![]);
+        i
     }
 
     fn get_variable(&self,string:String) -> Variable {
@@ -199,8 +217,12 @@ impl Interpreter {
             return Variable::variable_preset("internal_var".to_owned(), string[1..string.len()-1].to_string() , "string".to_owned());
         } else {
             for i in &self.variables {
-                if i.name == string {
-                    return i.clone();
+                if self.namespace.contains(&i.0) {
+                    for j in i.1 {
+                        if j.name == string {
+                            return j.clone();
+                        }
+                    }
                 }
             }
             error(&("[".to_owned().to_owned() + &self.line.to_string() +"]: UnknownTypeError"));
@@ -224,7 +246,14 @@ impl Interpreter {
                         error(&("[".to_owned()+ &i.line.to_string() + &"]: TypeError: expected string, got ".to_string() + &temp.kind));
                     }
                 }
-                println!("{}",data);
+                print!("{}",data.replace("\\n","\n"));
+            } else if i.kind == "keyword_let" {
+                //create a variable and append it to the current namespace
+                let mut name = i.data[0].clone();
+                let mut data = i.data[1].clone();
+                let mut var = self.get_variable(data.clone());
+                var.name = name.clone();
+                self.variables.get_mut(&self.namespace[self.namespace.len()-1]).unwrap().push(var);
             }
             index += 1;
         }
@@ -244,6 +273,7 @@ fn main() {
     file.read_to_string(&mut contents).unwrap();
     let mut lexer = Lexer::new(contents);
     lexer.lexer();
+    println!("{:#?}",&lexer.output);
     let mut interpreter = Interpreter::new(lexer.output);
     interpreter.execute();
 }
