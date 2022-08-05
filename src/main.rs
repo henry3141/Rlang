@@ -152,11 +152,22 @@ impl Node {
             data_vec:Some(vec),
         }
     }   
+
+    fn copy(&self) -> Node {
+        let mut new_node = Node::new();
+        new_node.data_type = self.data_type.clone();
+        new_node.data_string = self.data_string.clone();
+        new_node.data_i32 = self.data_i32.clone();
+        new_node.data_usize = self.data_usize.clone();
+        new_node.data_bool = self.data_bool.clone();
+        new_node.data_node = self.data_node.clone();
+        new_node.data_vec = self.data_vec.clone();
+        new_node
+    }
 }
 
 //---------------------------------
-//This is a Lexer + Parser
-//One Token represents a line of code.
+//This is a Lexer
 
 struct Lexer {
     input:String,
@@ -285,7 +296,6 @@ impl Lexer {
                 self.advance();
 
             } else if self.current_char.unwrap() == '"' {
-                println!("String");
                 let mut temp = String::from("");
                 self.advance();
                 while self.current_char.is_some() && (self.current_char.unwrap() != '"') {
@@ -322,31 +332,6 @@ impl Lexer {
                 }
                 node.data_i32 = Some(number.parse::<i32>().unwrap());
                 node.data_type = String::from("number");
-
-            } else if self.check_next("let") {
-                node.data_string = Some(String::from("let"));
-                node.data_type = String::from("keyword");
-                self.multi_advance(1);
-            } else if self.check_next("if") {
-                node.data_string = Some(String::from("if"));
-                node.data_type = String::from("keyword");
-                self.advance();
-            } else if self.check_next("else") {
-                node.data_string = Some(String::from("else"));
-                node.data_type = String::from("keyword");
-                self.multi_advance(2);
-            } else if self.check_next("while") {
-                node.data_string = Some(String::from("while"));
-                node.data_type = String::from("keyword");
-                self.multi_advance(2);
-            } else if self.check_next("print") {
-                node.data_string = Some(String::from("print"));
-                node.data_type = String::from("keyword");
-                self.multi_advance(3);
-            } else if self.check_next("return") {
-                node.data_string = Some(String::from("return"));
-                node.data_type = String::from("keyword");
-                self.multi_advance(4);
             } else if self.check_next("true") {
                 node.data_bool = Some(true);
                 node.data_type = String::from("boolean");
@@ -371,9 +356,65 @@ impl Lexer {
 
 
 
+//---------------------------------
+//This is a Parser
 
+struct Parser {
+    input: Vec<Node>,
+    output: Vec<Node>,
+    position: Option<usize>,
+    current_node: Option<Node>,
+    last_node: Option<Node>,
+    next_node: Option<Node>,
+}
 
+impl Parser {
+    fn new(input: Vec<Node>) -> Parser {
+        Parser {
+            input,
+            output: Vec::new(),
+            position: Some(0),
+            current_node: None,
+            last_node: None,
+            next_node: None,
+        }
+    }
 
+    fn advance(&mut self) {
+        self.position = Some(self.position.unwrap() +  1);
+        if self.position.unwrap() < self.input.len() {
+            self.current_node = Some(self.input[self.position.unwrap()].copy());
+        }
+        if self.position.unwrap()+1 < self.input.len() {
+            self.next_node = Some(self.input[self.position.unwrap() + 1].copy());
+        }
+        if self.position.unwrap() > 0 {
+            self.last_node = Some(self.input[self.position.unwrap() - 1].copy());
+        }
+    }
+
+    fn current(&mut self) {
+        if self.position.unwrap() < self.input.len() {
+            self.current_node = Some(self.input[self.position.unwrap()].copy());
+        }
+        if self.position.unwrap()+1 < self.input.len() {
+            self.next_node = Some(self.input[self.position.unwrap() + 1].copy());
+        }
+        if self.position.unwrap() > 0 {
+            self.last_node = Some(self.input[self.position.unwrap() - 1].copy());
+        }
+    }
+
+    fn parse(&mut self) {
+        self.position = Some(0);
+        self.current();
+        while self.position.is_some() && self.position.unwrap() < self.input.len() {
+            self.output.push(self.current_node.as_ref().unwrap().clone());
+            self.advance();
+        }
+    }
+
+}
 
 
 //---------------------------------
@@ -388,5 +429,20 @@ fn main() {
     file.read_to_string(&mut contents).unwrap();
     let mut lexer = Lexer::new(contents);
     lexer.lexer();
-    println!("{:#?}",lexer.output);
+    let mut parser = Parser::new((&lexer.output).clone());
+    parser.parse();
+    if lexer.output == parser.output {
+        println!("Success");
+    } else {
+        //print all nodes that are not the same and their index 
+        for i in 0..lexer.output.len() {
+            if lexer.output[i] != parser.output[i] {
+                println!("{}", i);
+                println!("{:#?}", lexer.output[i]);
+                println!("_________________________");
+                println!("{:#?}", parser.output[i]);
+                println!("#########################");
+            }
+        }
+    }
 }
