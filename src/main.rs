@@ -1,5 +1,6 @@
-use std::env;
+use std::{env, string};
 use std::fs::File;
+use std::ops::{Index, IndexMut};
 use std::process;
 use std::io::Read;
 use std::collections::HashMap;
@@ -15,265 +16,377 @@ fn error(message:&str) {
     process::exit(0);
 }
 
+fn smart_replace(str:&str,char1:&char,char2:&char) -> String {
+    let mut result:Vec<char> = str.chars().collect();
+    let mut index:usize = 0;
+    let mut block = false;
+    while index < result.len() {
+        if result[index] == *char1 && block == false {
+            result.remove(index);
+            if char2 != &'\0' {
+                result.insert(index,*char2);
+            }
+        } else if result[index] == '"' {
+            block = !block;
+        }
+        index += 1;
+    }
+    return result.iter().collect();
+}
+
+fn smart_split(str:&str,char1:&char) -> Vec<String> {
+    let mut mainvec = vec![];
+    let mut temp = "".to_string();	
+    let mut block = false;
+    for i in str.chars() {
+        if i == *char1 && block == false {
+            mainvec.push(temp.clone());
+            temp = "".to_string();
+        } else if i == '"' {
+            block = !block;
+            temp.push('"');
+        } else {
+            temp.push(i);
+        }
+    }
+    if temp != "" {
+        mainvec.push(temp);
+    }
+    mainvec
+}
+
+//create a list wich can hold diffrent types of data
+//in the same object
+#[derive(Debug,Clone,PartialEq,Eq)]
+struct Node {
+    data_type:String,
+    data_string:Option<String>,
+    data_i32:Option<i32>,
+    data_usize:Option<usize>,
+    data_bool:Option<bool>,
+    data_node:Option<Box<Node>>,
+    data_vec:Option<Vec<Node>>,
+}
+
+impl Node {
+    fn new() -> Node {
+        Node {
+            data_type:String::from("None"),
+            data_string:None,
+            data_i32:None,
+            data_usize:None,
+            data_bool:None,
+            data_node:None,
+            data_vec:None,
+        }
+    }
+
+    fn new_string(string:String) -> Node {
+        Node {
+            data_type:String::from("String"),
+            data_string:Some(string),
+            data_i32:None,
+            data_usize:None,
+            data_bool:None,
+            data_node:None,
+            data_vec:None,
+        }
+    }
+
+    fn new_i32(i32:i32) -> Node {
+        Node {
+            data_type:String::from("i32"),
+            data_string:None,
+            data_i32:Some(i32),
+            data_usize:None,
+            data_bool:None,
+            data_node:None,
+            data_vec:None,
+        }
+    }
+
+    fn new_usize(usize:usize) -> Node {
+        Node {
+            data_type:String::from("usize"),
+            data_string:None,
+            data_i32:None,
+            data_usize:Some(usize),
+            data_bool:None,
+            data_node:None,
+            data_vec:None,
+        }
+    }
+
+    fn new_bool(bool:bool) -> Node {
+        Node {
+            data_type:String::from("bool"),
+            data_string:None,
+            data_i32:None,
+            data_usize:None,
+            data_bool:Some(bool),
+            data_node:None,
+            data_vec:None,
+        }
+    }
+
+    fn new_node(node:Box<Node>) -> Node {
+        Node {
+            data_type:String::from("node"),
+            data_string:None,
+            data_i32:None,
+            data_usize:None,
+            data_bool:None,
+            data_node:Some(node),
+            data_vec:None,
+        }
+    }
+
+    fn new_vec(vec:Vec<Node>) -> Node {
+        Node {
+            data_type:String::from("vec"),
+            data_string:None,
+            data_i32:None,
+            data_usize:None,
+            data_bool:None,
+            data_node:None,
+            data_vec:Some(vec),
+        }
+    }   
+}
 
 //---------------------------------
 //This is a Lexer + Parser
-//A lexer is a program that takes a stream of characters and breaks it into a organized stream of tokens.
 //One Token represents a line of code.
 
-
-#[derive(Debug, Clone)]
-struct Token {
-    kind: String,
-    data:Vec<String>,
-    line:usize,
-    under:Vec<Token>,
-}
-
-impl Token {
-    fn empty() -> Token {
-        Token {
-            kind: "".to_string(),
-            data: vec![],
-            line: 0,
-            under: vec![],
-        }
-    }
-
-    fn add_under(&mut self,level:&i32,token:&Token) {
-        if *level == 0 {
-            self.under.push(token.to_owned());
-        } else {
-            if self.under.len() > 0 {
-                let index:usize = self.under.len()-1;
-                self.under[index].add_under(&(level-1),token);
-            }
-        }
-    }
-}
-
-
-
 struct Lexer {
-    input: String,
-    output: Vec<Token>,
+    input:String,
+    position:usize,
+    current_char:Option<char>,
+    output:Vec<Node>,
 }
 
 impl Lexer {
-    fn new(input: String) -> Lexer {
-        Lexer {
-            input: input,
-            output: Vec::new(),
+    fn new(input:String) -> Lexer {
+        let mut lexer = Lexer {
+            input:input,
+            position:0,
+            current_char:None,
+            output:vec![],
+        };
+        lexer
+    }
+
+    fn advance(&mut self) {
+        self.position += 1;
+        if self.position > self.input.len() - 1 {
+            self.current_char = None;
+        } else {
+            self.current_char = Some(self.input.chars().nth(self.position).unwrap());
         }
     }
 
-    fn smart_replace(str:&str,char1:&char,char2:&char) -> String {
-        let mut result:Vec<char> = str.chars().collect();
-        let mut index:usize = 0;
-        let mut block = false;
-        while index < result.len() {
-            if result[index] == *char1 && block == false {
-                result.remove(index);
-                if char2 != &'\0' {
-                    result.insert(index,*char2);
-                }
-            } else if result[index] == '"' {
-                block = !block;
+    fn next(&self) -> char {
+        if self.position > self.input.len() - 1 {
+            '\0'
+        } else {
+            self.input.chars().nth(self.position).unwrap()
+        }
+    }
+
+    fn skip_comment(&mut self) {
+        while self.current_char.is_some() && (self.current_char.unwrap() != '\n' ) {
+            self.advance();
+        }
+        self.advance();
+    }
+
+    fn check_next(&self,string:&str) -> bool {
+        if self.position > self.input.len() - 1 {
+            return false;
+        }
+        let mut index = 0;
+        while index < string.len() {
+            if self.input.chars().nth(self.position + index).unwrap() != string.chars().nth(index).unwrap() {
+                return false;
             }
             index += 1;
         }
-        return result.iter().collect();
+        return true;
     }
-    
-    fn smart_split(str:&str,char1:&char) -> Vec<String> {
-        let mut mainvec = vec![];
-        let mut temp = "".to_string();	
-        let mut block = false;
-        for i in str.chars() {
-            if i == *char1 && block == false {
-                mainvec.push(temp.clone());
-                temp = "".to_string();
-            } else if i == '"' {
-                block = !block;
-                temp.push('"');
-            } else {
-                temp.push(i);
-            }
+
+    fn multi_advance(&mut self,count:usize) {
+        for _ in 0..count {
+            self.advance();
         }
-        if temp != "" {
-            mainvec.push(temp);
+    }
+
+    fn get_word(&mut self) -> String {
+        let mut word = String::from("");
+        while self.current_char.is_some() && self.current_char.unwrap().is_alphanumeric() {
+            word.push(self.current_char.unwrap());
+            self.advance();
         }
-        mainvec
+        word
     }
 
     fn lexer(&mut self) {
-        self.input = Lexer::smart_replace(&self.input,&'\r',&'\0');
-        self.input = Lexer::smart_replace(&self.input,&'\t',&'\0');
-        let mut input = Lexer::smart_split(&self.input,&'\n');
-        let mut line:usize = 0;
-        let mut level = 0;
-        for i in &input {
-            line += 1;
-            let mut current_token = Token::empty();
-            current_token.line = line; 
-            if i.starts_with("/") || i == "" {
+        //Tokens :
+        // 7: == = equal
+        // 8: != = not equal
+        // 9: < = less than
+        // 10: > = greater than
+        // 11: <= = less than or equal to
+        // 12: >= = greater than or equal to
+        // 13: ( = open parenthesis
+        // 14: ) = close parenthesis
+        // 15: { = open curly brace
+        // 16: } = close curly brace
+        // 17: , = comma
+        // 18: ; = semicolon
+        self.input = smart_replace(&self.input, &'\r', &'\0');
+        self.position = 0;
+        self.current_char = Some(self.input.chars().nth(self.position).unwrap());
+        while self.current_char.is_some() {
+            let mut node = Node::new();
+            if self.current_char.unwrap() == ' ' || self.current_char.unwrap() == '\t' {
+                self.advance();
                 continue;
-            } else if i.starts_with("write") {
-                current_token.kind = "keyword_write".to_string();
-                let ivec = Lexer::smart_split(i,&' ');
-                let args = Lexer::smart_split(&ivec[1].to_string(),&',');
-                for j in &args {
-                    current_token.data.push(j.to_string());
-                }
-            }  else if i .starts_with("let") {
-                current_token.kind = "keyword_let".to_string();
-                let ivec = Lexer::smart_split(i,&' ');
-                let args = ivec[1..].to_vec().join("");
-                let args = Lexer::smart_replace(&args, &' ', &'\0');
-                let args = Lexer::smart_split(&args,&'=');
-                current_token.data.push(args[0].to_string());
-                current_token.data.push(args[1].to_string());
-            } 
+            } else if self.check_next("//") {
+                self.skip_comment();
+                continue;
+            } else if self.check_next("==") {
+                node.data_string = Some(String::from("=="));
+                node.data_type = String::from("math");
+                self.advance();
 
-            if level == 0 {
-                self.output.push(current_token);
+            } else if self.check_next("!=") {
+                node.data_string = Some(String::from("!="));
+                node.data_type = String::from("math");
+                self.advance();
+
+            } else if self.check_next("<") {
+                node.data_string = Some(String::from("<"));
+                node.data_type = String::from("math");
+                self.advance();
+
+            } else if self.check_next(">") {
+                node.data_string = Some(String::from(">"));
+                node.data_type = String::from("math");
+                self.advance();
+
+            } else if self.check_next("<=") {
+                node.data_string = Some(String::from("<="));
+                node.data_type = String::from("math");
+                self.advance();
+
+            } else if self.check_next(">=") {
+                node.data_string = Some(String::from(">="));
+                node.data_type = String::from("math");
+                self.advance();
+
+            } else if self.current_char.unwrap() == '"' {
+                println!("String");
+                let mut temp = String::from("");
+                self.advance();
+                while self.current_char.is_some() && (self.current_char.unwrap() != '"') {
+                    temp.push(self.current_char.unwrap());
+                    self.advance();
+                }
+                node.data_string = Some(temp);
+                node.data_type = String::from("string");
+            } else if self.current_char.unwrap() == '+' {
+                node.data_string = Some(String::from("+"));
+                node.data_type = String::from("math");
+
+            } else if self.current_char.unwrap() == '-' {
+                node.data_string = Some(String::from("-"));
+                node.data_type = String::from("math");
+
+            } else if self.current_char.unwrap() == '*' {
+                node.data_string = Some(String::from("*"));
+                node.data_type = String::from("math");
+
+            } else if self.current_char.unwrap() == '/' {
+                node.data_string = Some(String::from("/"));
+                node.data_type = String::from("math");
+
+            } else if self.current_char.unwrap() == '%' {
+                node.data_string = Some(String::from("&"));
+                node.data_type = String::from("math");
+
+            } else if self.current_char.unwrap().is_digit(10) && self.next().is_digit(10) {
+                let mut number = String::from("");
+                while self.current_char.is_some() && self.current_char.unwrap().is_digit(10) {
+                    number.push(self.current_char.unwrap());
+                    self.advance();
+                }
+                node.data_i32 = Some(number.parse::<i32>().unwrap());
+                node.data_type = String::from("number");
+
+            } else if self.check_next("let") {
+                node.data_string = Some(String::from("let"));
+                node.data_type = String::from("keyword");
+                self.multi_advance(1);
+            } else if self.check_next("if") {
+                node.data_string = Some(String::from("if"));
+                node.data_type = String::from("keyword");
+                self.advance();
+            } else if self.check_next("else") {
+                node.data_string = Some(String::from("else"));
+                node.data_type = String::from("keyword");
+                self.multi_advance(2);
+            } else if self.check_next("while") {
+                node.data_string = Some(String::from("while"));
+                node.data_type = String::from("keyword");
+                self.multi_advance(2);
+            } else if self.check_next("print") {
+                node.data_string = Some(String::from("print"));
+                node.data_type = String::from("keyword");
+                self.multi_advance(3);
+            } else if self.check_next("return") {
+                node.data_string = Some(String::from("return"));
+                node.data_type = String::from("keyword");
+                self.multi_advance(4);
+            } else if self.check_next("true") {
+                node.data_bool = Some(true);
+                node.data_type = String::from("boolean");
+            } else if self.check_next("false") {
+                node.data_bool = Some(false);
+                node.data_type = String::from("boolean");
             } else {
-                let index = self.output.len()-1;
-                self.output[index].add_under(&level,&current_token);
+                //fix for empty string
+                node.data_string = Some(self.get_word());
+                node.data_type = String::from("unidentiefied_word");
             }
-        }
-    }
 
-}
-
-//---------------------------------
-//Then a Interpreter
-//An interpreter is a program that takes a stream of tokens and executes it.
-
-#[derive(Debug, Clone)]
-struct Variable {
-    kind: String,
-    data: String,
-    token_data: Token,
-    name: String,
-}
-
-impl Variable {
-    fn new(kind: String, data: String, token_data: Token, name: String) -> Variable {
-        Variable {
-            kind: kind,
-            data: data,
-            token_data: token_data,
-            name: name,
-        }
-    }
-
-    fn get_data(&self) -> String {
-        self.data.clone()
-    }
-
-    fn empty() -> Variable {
-        Variable {
-            kind: "".to_string(),
-            data: "".to_string(),
-            token_data: Token::empty(),
-            name: "".to_string(),
-        }
-    }
-
-    fn function_preset(name: String, token_data: Token) -> Variable {
-        Variable::new("function".to_string(), "".to_string(), token_data, name)
-    }
-
-    fn variable_preset(name: String, data: String , kind:String) -> Variable {
-        Variable::new(kind, data, Token::empty(), name)
-    }
-
-}
-
-struct Interpreter {
-    input: Vec<Token>,
-    variables: HashMap<String, Vec<Variable>>,
-    line: usize,
-    namespace: Vec<String>,
-}
-
-impl Interpreter {
-    fn new(input: Vec<Token>) -> Interpreter {
-        let mut i = Interpreter {
-            input: input,
-            variables: HashMap::new(),
-            line: 0,
-            namespace: vec!["Global".to_string()],
-        };
-        i.variables.insert("Global".to_string(), vec![]);
-        i
-    }
-
-    fn get_variable(&self,string:String) -> Variable {
-        //will turn any string it gets into a variable of the right type
-        //or find it in self.variables
-        if string.starts_with("\"") && string.ends_with("\"") {
-            return Variable::variable_preset("internal_var".to_owned(), string[1..string.len()-1].to_string() , "string".to_owned());
-        } else {
-            for i in &self.variables {
-                if self.namespace.contains(&i.0) {
-                    for j in i.1 {
-                        if j.name == string {
-                            return j.clone();
-                        }
-                    }
-                }
+            if (node.data_type != String::from("")) && !(node.data_string == Some(String::from("")) && node.data_type == String::from("unidentiefied_word")) {
+                self.output.push(node);
             }
-            error(&("[".to_owned().to_owned() + &self.line.to_string() +"]: UnknownTypeError"));
-        }
-        Variable::empty()
-    } 
 
-    fn execute(&mut self) {
-        let mut TokenStream:Vec<Token> = self.input.clone();
-        let mut index:usize = 0;
-        while index < TokenStream.len() {
-            let mut i = TokenStream[index].clone();
-            self.line = i.line;
-            if i.kind == "keyword_write" {
-                let mut data = "".to_string();
-                for j in &i.data {
-                    let temp = &self.get_variable(j.clone());
-                    if temp.kind == "string".to_string() {
-                        data.push_str(&temp.get_data());
-                    } else {
-                        error(&("[".to_owned()+ &i.line.to_string() + &"]: TypeError: expected string, got ".to_string() + &temp.kind));
-                    }
-                }
-                print!("{}",data.replace("\\n","\n"));
-            } else if i.kind == "keyword_let" {
-                //create a variable and append it to the current namespace
-                let mut name = i.data[0].clone();
-                let mut data = i.data[1].clone();
-                let mut var = self.get_variable(data.clone());
-                var.name = name.clone();
-                self.variables.get_mut(&self.namespace[self.namespace.len()-1]).unwrap().push(var);
-            }
-            index += 1;
+            self.advance();
         }
     }
 }
+
+
+
+
+
+
+
 
 
 //---------------------------------
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args:Vec<String> = env::args().collect();
     if args.len() == 1 {
-        error("FileError: No file specified")
+        error("FileExecuteError: No file specified");
     }
     let mut file = File::open(&args[1]).unwrap();
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
     let mut lexer = Lexer::new(contents);
     lexer.lexer();
-    println!("{:#?}",&lexer.output);
-    let mut interpreter = Interpreter::new(lexer.output);
-    interpreter.execute();
+    println!("{:#?}",lexer.output);
 }

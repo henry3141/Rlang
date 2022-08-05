@@ -1,0 +1,3 @@
+write "Hello World!"
+//This is a comment!
+write 100
