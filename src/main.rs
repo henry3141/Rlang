@@ -1,6 +1,5 @@
-use std::{env, string};
+use std::{env};
 use std::fs::File;
-use std::ops::{Index, IndexMut};
 use std::process;
 use std::io::Read;
 use std::collections::HashMap;
@@ -355,7 +354,6 @@ impl Lexer {
 
 
 
-
 //---------------------------------
 //This is a Parser
 
@@ -431,6 +429,7 @@ fn main() {
     lexer.lexer();
     let mut parser = Parser::new((&lexer.output).clone());
     parser.parse();
+    println!("{:#?}", parser.output);
     if lexer.output == parser.output {
         println!("Success");
     } else {
